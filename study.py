@@ -1,7 +1,9 @@
 import torch
+import torchvision
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
+import torch.nn.functional as F
+import torchvision.transforms as transforms
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -125,10 +127,73 @@ def main7():
         plt.grid()
         plt.show()
 
-    if __name__ == "__main__":
-        main()
 
+#Basic Neural Network for Image Classification
+def main8():
+    #dataset
+    train_dataset = torchvision.datasets.CIFAR10(root='./data/', train=True, transform=transforms.ToTensor(), download=True)
+    test_dataset = torchvision.datasets.CIFAR10(root='./data/', train=False, transform=transforms.ToTensor(), download=True)
+    
+    train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=64, shuffle=True, num_workers=2)
+    test_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=64, shuffle=False, num_workers=2)
 
+    num_classes = 10
+    height, width, channel = 32, 32, 3
+
+    lr, momentum, weight_decay = 0.01, 0.9, 5e-4
+    
+    #model and functions
+    class MLP(nn.module):
+        def __init__(self, hidden_size = 600):
+            super(MLP, self).__init__()
+            self.layer1 = nn.Linear(width*height*channel, hidden_size)
+            self.layer2 = nn.Linear(hidden_size, hidden_size)
+            self.layer3 = nn.Linear(hidden_size, num_classes)
+            
+            self.dropout1 = nn.Dropout2d(0.2)
+            self.dropout2 = nn.Dropout2d(0.2)
+
+        def forward(self, x):
+            x = F.relu(self.layer1(x))
+            x = self.dropout1(x)
+            x = F.relu(self.layer2(x))
+            x = self.dropout2(x)
+            x = F.relu(self.layer3(x))
+            return x
+        
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = MLP().to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
+
+    #learning
+    epochs = 50
+
+    train_loss_list = []
+    train_acc_list = []
+    val_loss_list = []
+    val_acc_list = []
+
+    for epoch in range(epochs):
+        train_loss = 0
+        train_acc = 0
+        val_loss = 0
+        val_acc = 0
+
+        #train
+        model.train()
+        for i, (images, labels) in enumerate(train_loader()):
+            images = images.view(-1,height*width*channel) #3d to 1d
+            
+            images = images.to(device)
+            labels = labels.to(device)
+
+            optimizer.zero_grad()
+            labels_pred = model(images)
+            loss = criterion(labels_pred, labels)
+            train_loss += loss.item()
+            train_acc += (labels_pred.max(1)[1]==labels).sum().item()
+            
 
 
 if __name__ == "__main__":
