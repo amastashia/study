@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import torchvision.transforms as transforms
 import numpy as np
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 #Numpy to Tensor
 def main1():
@@ -135,7 +136,7 @@ def main8():
     test_dataset = torchvision.datasets.CIFAR10(root='./data/', train=False, transform=transforms.ToTensor(), download=True)
     
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=64, shuffle=True, num_workers=2)
-    test_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=64, shuffle=False, num_workers=2)
+    test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=64, shuffle=False, num_workers=2)
 
     num_classes = 10
     height, width, channel = 32, 32, 3
@@ -143,15 +144,15 @@ def main8():
     lr, momentum, weight_decay = 0.01, 0.9, 5e-4
     
     #model and functions
-    class MLP(nn.module):
+    class MLP(nn.Module):
         def __init__(self, hidden_size = 600):
             super(MLP, self).__init__()
             self.layer1 = nn.Linear(width*height*channel, hidden_size)
             self.layer2 = nn.Linear(hidden_size, hidden_size)
             self.layer3 = nn.Linear(hidden_size, num_classes)
             
-            self.dropout1 = nn.Dropout2d(0.2)
-            self.dropout2 = nn.Dropout2d(0.2)
+            self.dropout1 = nn.Dropout(p=0.2)
+            self.dropout2 = nn.Dropout(p=0.2)
 
         def forward(self, x):
             x = F.relu(self.layer1(x))
@@ -162,6 +163,7 @@ def main8():
             return x
         
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(device)
     model = MLP().to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
@@ -182,7 +184,7 @@ def main8():
 
         #train
         model.train()
-        for i, (images, labels) in enumerate(train_loader()):
+        for images, labels in train_loader:
             images = images.view(-1,height*width*channel) #3d to 1d
             
             images = images.to(device)
@@ -193,8 +195,157 @@ def main8():
             loss = criterion(labels_pred, labels)
             train_loss += loss.item()
             train_acc += (labels_pred.max(1)[1]==labels).sum().item()
-            
+            loss.backward() #back propagate
+            optimizer.step() #update weights
+        avg_train_loss = train_loss/len(train_loader.dataset)
+        avg_train_acc = train_acc/len(train_loader.dataset)
 
+        #validation
+        model.eval()
+        with torch.no_grad(): #reduce RAM comsumption
+            for images, labels in test_loader:
+                images = images.view(-1,height*width*channel) #3d to 1d
+                images = images.to(device)
+                labels = labels.to(device)    
+                labels_pred = model(images)
+                loss  = criterion(labels_pred, labels)
+                val_loss += loss.item()
+                val_acc += (labels_pred.max(1)[1]==labels).sum().item()
+        avg_val_loss = val_loss/len(test_loader.dataset)
+        avg_val_acc = val_acc/len(test_loader.dataset)
+
+        #log
+        print(f'Epoch [{epoch+1}/{epochs}], train_loss: {avg_train_loss:.4f}, val_loss: {avg_val_loss:.4f}, val_acc: {avg_val_acc:.4f}')
+        train_loss_list.append(avg_train_loss)
+        train_acc_list.append(avg_train_acc)
+        val_loss_list.append(avg_val_loss)
+        val_acc_list.append(avg_val_acc)
+
+    #plot
+    plt.figure()
+    plt.plot(range(epochs), train_loss_list, color='blue', linestyle='-', label='train_loss')
+    plt.plot(range(epochs), val_loss_list, color='green', linestyle='--', label='val_loss')
+    plt.legend()
+    plt.title('Training and validation loss')
+    plt.grid()
+
+    plt.figure()
+    plt.plot(range(epochs), train_acc_list, color='blue', linestyle='-', label='train_acc')
+    plt.plot(range(epochs), val_acc_list, color='green', linestyle='--', label='val_acc')
+    plt.legend()
+    plt.title('Training and validation accuracy')
+    plt.grid()
+
+    plt.show()
+
+#Convolutional Neural Network
+def main9():
+    #dataset
+    train_dataset = torchvision.datasets.CIFAR10(root='./data/', train=True, transform=transforms.ToTensor(), download=True)
+    test_dataset = torchvision.datasets.CIFAR10(root='./data/', train=False, transform=transforms.ToTensor(), download=True)
+    
+    train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=64, shuffle=True, num_workers=2)
+    test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=64, shuffle=False, num_workers=2)
+
+    #parameters
+    num_classes = 10
+    lr, momentum, weight_decay = 0.01, 0.9, 5e-4
+    epochs = 20
+
+    #convolutional model
+    class AlexNet(nn.Module):
+
+        def __init__(self, num_classes=10) -> None:
+            super(AlexNet, self).__init__()
+            self.features = nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=5),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(kernel_size=2, stride=2),
+                nn.Conv2d(64, 192, kernel_size=5, padding=2),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(kernel_size=2, stride=2),
+                nn.Conv2d(192, 384, kernel_size=3, padding=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(384, 256, kernel_size=3, padding=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(256, 256, kernel_size=3, padding=1),
+                nn.ReLU(inplace=True),
+                nn.MaxPool2d(kernel_size=2, stride=2)
+            )
+            self.classifier = nn.Linear(256, num_classes)
+        
+        def forward(self, x):
+            x = self.features(x)
+            x = x.view(x.size(0), -1)
+            x = self.classifier(x)
+            return x
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(device)
+    model = AlexNet(num_classes=num_classes).to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
+
+    train_loss_list = []
+    train_acc_list = []
+    val_loss_list = []
+    val_acc_list = []
+
+    for epoch in tqdm(range(epochs)):
+        train_loss = 0
+        train_acc = 0
+        val_loss = 0
+        val_acc = 0
+
+        #train
+        model.train()
+        for images, labels in train_loader:
+            images, labels = images.to(device), labels.to(device)
+            optimizer.zero_grad()
+            labels_pred = model(images)
+            loss = criterion(labels_pred, labels)
+            train_loss += loss.item()
+            train_acc += (labels_pred.max(1)[1]==labels).sum().item()
+            loss.backward()
+            optimizer.step()
+        avg_train_loss = train_loss/len(train_loader.dataset)
+        avg_train_acc = train_acc/len(train_loader.dataset)
+
+        #validation
+        model.eval()
+        with torch.no_grad():
+            for images, labels in test_loader:
+                images, labels = images.to(device), labels.to(device)
+                labels_pred = model(images)
+                loss = criterion(labels_pred, labels)
+                val_loss += loss.item()
+                val_acc += (labels_pred.max(1)[1]==labels).sum().item()
+        avg_val_loss = val_loss/len(test_loader.dataset)
+        avg_val_acc = val_acc/len(test_loader.dataset)
+
+        train_loss_list.append(avg_train_loss)
+        train_acc_list.append(avg_train_acc)
+        val_loss_list.append(avg_val_loss)
+        val_acc_list.append(avg_val_acc)
+
+    
+
+    #plot
+    plt.figure()
+    plt.plot(range(epochs), train_loss_list, color='blue', linestyle='-', label='train_loss')
+    plt.plot(range(epochs), val_loss_list, color='green', linestyle='--', label='val_loss')
+    plt.legend()
+    plt.title('Training and validation loss')
+    plt.grid()
+
+    plt.figure()
+    plt.plot(range(epochs), train_acc_list, color='blue', linestyle='-', label='train_acc')
+    plt.plot(range(epochs), val_acc_list, color='green', linestyle='--', label='val_acc')
+    plt.legend()
+    plt.title('Training and validation accuracy')
+    plt.grid()
+
+    plt.show()
 
 if __name__ == "__main__":
-    main7()
+    main9()
