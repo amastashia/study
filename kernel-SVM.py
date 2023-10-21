@@ -4,7 +4,7 @@ from sklearn.metrics import f1_score
 import pandas as pd
 
 #parameters
-data_name = 'breast-cancer_norm'
+data_name = ''
 
 #preprocessing
 dir = './dataset/'+data_name+'.csv'
