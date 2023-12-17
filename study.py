@@ -4,8 +4,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as transforms
-from torchtext import vocab, datasets
-from torchtext.legacy import data
+from torchtext import vocab
+from torchtext.legacy import data, datasets
 from  PIL import Image
 import os, glob
 import numpy as np
@@ -644,7 +644,7 @@ def main12():
     #If you wanna build LSTM for multiple input and single output, just pick last output.
     #For example, output_seq[-1] (last hx_b) is output in model by LSTM.Cell.
 
-#Text lassify
+#Text classify
 def main13():
     #parameters
     batch_size = 32
