@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as transforms
+from torchtext import vocab, datasets
+from torchtext.legacy import data
 from  PIL import Image
 import os, glob
 import numpy as np
@@ -497,7 +499,7 @@ def main10():
             x = self.classifier(x)
             return x
         
-    #same as model09
+    #same model09 as below
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(device)
     model = AlexNet(num_classes=num_classes).to(device)
@@ -565,6 +567,112 @@ def main10():
 
     plt.show()
 
+#nn.LSTM
+def main11():
+    #LSTM
+    x = torch.rand(1,10,2)
+    model = nn.LSTM(input_size=2, hidden_size=4, batch_first=True)
+    y, _  = model(x)
+    #print(x)
+    #print(y)
+    print(x.shape, y.shape)
+
+    #LSTMCell
+    x = torch.randn(20, 2)
+    h0 = torch.randn(20, 4)
+    c0 = torch.randn(20, 4)
+    model = nn.LSTMCell(input_size=2, hidden_size=4)
+    y, _ = model(x, (h0, c0))
+    #print(x)
+    #print(y)
+    print(x.shape, y.shape)
+
+#LSTM for multiple input and multiple output (2-layer LSTM)
+def main12():
+
+    #parameter
+    batch_size = 20
+    seq_len = 10
+    input_size = 2
+    hidden_size = 4
+    
+    #model by LSTM
+    model = nn.LSTM(input_size, hidden_size, num_layers=2, batch_first=True)
+
+    #model by LSTM.Cell
+    class LSTM_model(nn.Module):
+        def __init__(self):
+            super(LSTM_model, self).__init__()
+            #define 2 layers
+            self.block_a = nn.LSTMCell(input_size, hidden_size)
+            self.block_b = nn.LSTMCell(hidden_size, hidden_size)
+        
+        def forward(self, x, hx_a0, cx_a0, hx_b0, cx_b0):
+            '''
+            x: current step input
+            hx_a0: previous step output from block_a
+            cx_a0: previous step cell from block_a
+            hx_b0: previous step output from block_b
+            cx_b0: previous step cell from block_b
+            '''
+            hx_a1, cx_a1 = self.block_a(x, (hx_a0, cx_a0))
+            hx_b1, cx_b1 = self.block_b(hx_a1, (hx_b0, cx_b0))
+
+            return hx_a1, cx_a1, hx_b1, cx_b1
+        
+    model = LSTM_model()
+
+    #define input sequences
+    input_seq = torch.randn(batch_size, seq_len, input_size)
+
+    #initialize intermediate layers
+    hx_a = torch.randn(batch_size, hidden_size)
+    cx_a = torch.randn(batch_size, hidden_size)
+    hx_b = torch.randn(batch_size, hidden_size)
+    cx_b = torch.randn(batch_size, hidden_size)
+
+    #forward propercation
+    output_seq = []
+    for i in range(seq_len):
+        hx_a, cx_a, hx_b, cx_b = model(input_seq[:, i, :], hx_a, cx_a, hx_b, cx_b)
+        output_seq.append(hx_b)
+
+    #list to tensor
+    output_seq = torch.stack(output_seq, dim=1)
+
+    ###remarks
+    #If you wanna build LSTM for multiple input and single output, just pick last output.
+    #For example, output_seq[-1] (last hx_b) is output in model by LSTM.Cell.
+
+#Text lassify
+def main13():
+    #parameters
+    batch_size = 32
+    output_size = 2
+    hidden_size = 256
+    embedding_size = 300
+
+    #setup Field
+    tokenize = lambda x: x.split()
+    TEXT = data.Field(Sequential=True, #True if text with variable length
+                      tokenize=tokenize, #tokenize function
+                      lower=True, #make upper letters lower 
+                      include_lengths=True, #show the number of words in one text
+                      batch_first=True, #treat tensor[0] as batch size dim
+                      fix_length=200) #how many words in one text
+    LABEL = data.LabelField()
+
+    train_dataset, test_dataset = datasets.IMDB.splits(TEXT, LABEL)
+    train_dataset, val_dataset = train_dataset.split()
+
+    TEXT.build_vocab(train_dataset, min_freq=3, vectors=vocab.GloVe(name='6B', dim=300))
+    LABEL.build_vocab(train_dataset)
+
+    #shape dataset to batch size
+    train_iter, val_iter, test_iter = data.BacketIterator.splits((train_dataset, val_dataset, test_dataset), batch_size=32, sort_key=lambda x: len(x.text), repeat=False, shuffle=True)
+
+
+
 
 if __name__ == "__main__":
-    main10()
+    main13()
